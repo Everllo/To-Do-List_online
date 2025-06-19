@@ -1,22 +1,45 @@
 const TelegramBot = require('node-telegram-bot-api');
-const mysql = require('mysql2/promise');
+const sqlite3 = require('sqlite3').verbose();
 const { v4: uuidv4 } = require('uuid');
 
-// Настройки базы данных
-const dbConfig = {
-    host: 'localhost',
-    user: 'root',
-    password: 'QwErT-12345',
-    database: 'todolist',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-};
+// SQLite database setup
+const db = new sqlite3.Database('./todolist.db', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+    if (err) {
+        console.error('Error opening database:', err.message);
+    }
+});
 
-const pool = mysql.createPool(dbConfig);
 const TELEGRAM_TOKEN = '8044718684:AAFuJX0cO9AFF0eEJdd8IKa2wsAkOi0A44Q';
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const userStates = {};
+
+// Helper functions for SQLite
+function dbGet(query, params) {
+    return new Promise((resolve, reject) => {
+        db.get(query, params, (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+        });
+    });
+}
+
+function dbAll(query, params) {
+    return new Promise((resolve, reject) => {
+        db.all(query, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+}
+
+function dbRun(query, params) {
+    return new Promise((resolve, reject) => {
+        db.run(query, params, function(err) {
+            if (err) reject(err);
+            else resolve(this);
+        });
+    });
+}
 
 // Команда /start
 bot.onText(/\/start/, async (msg) => {
@@ -40,23 +63,20 @@ bot.onText(/\/link (.+)/, async (msg, match) => {
     const linkCode = match[1];
     
     try {
-        const connection = await pool.getConnection();
-        const [rows] = await connection.query(
+        const user = await dbGet(
             'SELECT id FROM users WHERE telegram_link_code = ?',
             [linkCode]
         );
         
-        if (rows.length > 0) {
-            const userId = rows[0].id;
-            await connection.query(
+        if (user) {
+            await dbRun(
                 'UPDATE users SET telegram_id = ?, telegram_link_code = NULL WHERE id = ?',
-                [chatId, userId]
+                [chatId, user.id]
             );
             bot.sendMessage(chatId, 'Ваш Telegram аккаунт успешно привязан! Теперь вы можете управлять задачами через бота.');
         } else {
             bot.sendMessage(chatId, 'Неверный код привязки. Пожалуйста, получите новый код на сайте.');
         }
-        connection.release();
     } catch (error) {
         console.error('Link error:', error);
         bot.sendMessage(chatId, 'Произошла ошибка при привязке аккаунта.');
@@ -249,13 +269,11 @@ bot.on('message', async (msg) => {
 // Вспомогательные функции
 async function getUserIdByTelegramId(telegramId) {
     try {
-        const connection = await pool.getConnection();
-        const [rows] = await connection.query(
+        const user = await dbGet(
             'SELECT id FROM users WHERE telegram_id = ?',
             [telegramId]
         );
-        connection.release();
-        return rows.length > 0 ? rows[0].id : null;
+        return user ? user.id : null;
     } catch (error) {
         console.error('Get user ID error:', error);
         return null;
@@ -263,40 +281,31 @@ async function getUserIdByTelegramId(telegramId) {
 }
 
 async function getTasks(userId) {
-    const connection = await pool.getConnection();
-    const [rows] = await connection.query(
+    return await dbAll(
         'SELECT id, text FROM items WHERE user_id = ? ORDER BY id',
         [userId]
     );
-    connection.release();
-    return rows;
 }
 
 async function addTask(userId, text) {
-    const connection = await pool.getConnection();
-    await connection.query(
+    await dbRun(
         'INSERT INTO items (user_id, text) VALUES (?, ?)',
         [userId, text]
     );
-    connection.release();
 }
 
 async function updateTask(userId, taskId, newText) {
-    const connection = await pool.getConnection();
-    await connection.query(
+    await dbRun(
         'UPDATE items SET text = ? WHERE id = ? AND user_id = ?',
         [newText, taskId, userId]
     );
-    connection.release();
 }
 
 async function deleteTask(userId, taskId) {
-    const connection = await pool.getConnection();
-    await connection.query(
+    await dbRun(
         'DELETE FROM items WHERE id = ? AND user_id = ?',
         [taskId, userId]
     );
-    connection.release();
 }
 
 console.log('Telegram bot is running...');
