@@ -6,6 +6,7 @@ const { parse } = require('querystring');
 const cookie = require('cookie');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
+const { fork } = require('child_process');
 
 const PORT = 3000;
 const SESSION_SECRET = 'your-secret-key'; // Change this in production
@@ -24,6 +25,24 @@ const dbConfig = {
 
 const pool = mysql.createPool(dbConfig);
 const sessions = {};
+
+// Запускаем Telegram бота как дочерний процесс
+const botProcess = fork(path.join(__dirname, 'bot.js'));
+
+// Обработка ошибок дочернего процесса
+botProcess.on('error', (err) => {
+    console.error('Failed to start bot process:', err);
+});
+
+botProcess.on('exit', (code, signal) => {
+    if (code !== null) {
+        console.error(`Bot process exited with code ${code}`);
+    } else {
+        console.error(`Bot process was killed with signal ${signal}`);
+    }
+});
+
+console.log('Telegram bot process started');
 
 // Helper functions
 function generateSessionId() {
@@ -479,5 +498,23 @@ server.listen(PORT, () => {
     console.log('MySQL config:', {
         ...dbConfig,
         password: '***'
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('Shutting down gracefully...');
+    botProcess.kill();
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGTERM', () => {
+    console.log('Shutting down gracefully...');
+    botProcess.kill();
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
     });
 });
