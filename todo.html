@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>To-Do List</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="header">
+        <h2>To-Do List</h2>
+        <div>
+            <button id="telegramLinkBtn">Привязать Telegram</button>
+            <button id="logoutBtn">Logout</button>
+        </div>
+    </div>
+
+    <table id="todoList">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Text</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="listBody">
+            {{rows}}
+        </tbody>
+    </table>
+
+    <div class="add-form">
+        <input type="text" id="newItem" placeholder="Enter new item">
+        <button onclick="addItem()">Add</button>
+    </div>
+
+    <script>
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    window.location.href = '/';
+                } else {
+                    alert('Logout failed');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Logout failed');
+            }
+        });
+
+        async function addItem() {
+            const newItemInput = document.getElementById('newItem');
+            const newItemText = newItemInput.value.trim();
+
+            if (!newItemText) {
+                alert('Please enter a task');
+                return;
+            }
+
+            try {
+                const response = await fetch('/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: newItemText })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    window.location.reload();
+                } else {
+                    alert('Error adding item: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to add item');
+            }
+        }
+
+        async function updateItem(id, newText) {
+            try {
+                const response = await fetch('/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ id: id, text: newText })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    window.location.reload();
+                } else {
+                    alert('Error updating item');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to update item');
+            }
+        }
+
+        async function removeItem(id) {
+            if (!confirm('Are you sure you want to delete this item?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ id: id })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    window.location.reload();
+                } else {
+                    alert('Error deleting item');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to delete item');
+            }
+        }
+
+        function setupEditMode(row) {
+            const id = row.getAttribute('data-id');
+            const textCell = row.querySelector('.item-text');
+            const originalText = textCell.textContent;
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'edit-input';
+            input.value = originalText;
+            
+            textCell.innerHTML = '';
+            textCell.appendChild(input);
+            
+            const saveButton = document.createElement('button');
+            saveButton.className = 'edit-btn';
+            saveButton.textContent = '💾';
+            saveButton.onclick = () => {
+                const newText = input.value.trim();
+                if (newText && newText !== originalText) {
+                    updateItem(id, newText);
+                } else {
+                    cancelEditMode(row, originalText);
+                }
+            };
+            
+            const cancelButton = document.createElement('button');
+            cancelButton.className = 'delete-btn';
+            cancelButton.textContent = '✖';
+            cancelButton.onclick = () => cancelEditMode(row, originalText);
+            
+            const actionsCell = row.querySelector('td:last-child');
+            actionsCell.innerHTML = '';
+            actionsCell.appendChild(saveButton);
+            actionsCell.appendChild(cancelButton);
+            
+            input.focus();
+        }
+
+        function cancelEditMode(row, originalText) {
+            const textCell = row.querySelector('.item-text');
+            textCell.textContent = originalText;
+            
+            const id = row.getAttribute('data-id');
+            const actionsCell = row.querySelector('td:last-child');
+            actionsCell.innerHTML = `
+                <button class="edit-btn">✏️</button>
+                <button class="delete-btn">×</button>
+            `;
+            
+            actionsCell.querySelector('.edit-btn').onclick = () => setupEditMode(row);
+            actionsCell.querySelector('.delete-btn').onclick = () => removeItem(id);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('#listBody tr').forEach(row => {
+                const id = row.getAttribute('data-id');
+                row.querySelector('.edit-btn').onclick = () => setupEditMode(row);
+                row.querySelector('.delete-btn').onclick = () => removeItem(id);
+            });
+        });
+
+        document.getElementById('telegramLinkBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/telegram-link-code', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const telegramLink = `https://t.me/PlanTasks_bot?start=${result.linkCode}`;
+                    const message = `Для привязки Telegram аккаунта:\n\n1. Перейдите по ссылке: ${telegramLink}\n\n` +
+                                    `2. Или откройте Telegram, найдите бота @PlanTasks_bot и отправьте команду:\n` +
+                                    `/link ${result.linkCode}`;
+                    
+                    alert(message);
+                } else {
+                    alert('Ошибка при получении кода привязки');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Ошибка при привязке Telegram');
+            }
+        });
+    </script>
+</body>
+</html>

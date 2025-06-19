@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie": "^0.5.0",
+    "mysql2": "^3.14.1",
+    "node-telegram-bot-api": "^0.61.0",
+    "uuid": "^9.0.1"
+  }
+}
